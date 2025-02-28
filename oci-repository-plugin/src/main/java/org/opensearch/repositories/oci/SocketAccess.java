@@ -28,16 +28,22 @@ public class SocketAccess {
 
     private SocketAccess() {}
 
+    @SuppressWarnings("deprecation")
     public static <T> T doPrivilegedIOException(PrivilegedExceptionAction<T> operation)
             throws IOException {
         SpecialPermission.check();
         try {
             return AccessController.doPrivileged(operation);
-        } catch (PrivilegedActionException e) {
-            throw (IOException) e.getCause();
+        } catch (PrivilegedActionException privilegedActionException) {
+            if (privilegedActionException.getCause() instanceof IOException) {
+                throw (IOException) privilegedActionException.getCause();
+            } else {
+                throw new IOException(privilegedActionException.getCause());
+            }
         }
     }
 
+    @SuppressWarnings("deprecation")
     public static void doPrivilegedVoidIOException(CheckedRunnable<IOException> action)
             throws IOException {
         SpecialPermission.check();
@@ -48,8 +54,12 @@ public class SocketAccess {
                                 action.run();
                                 return null;
                             });
-        } catch (PrivilegedActionException e) {
-            throw (IOException) e.getCause();
+        } catch (PrivilegedActionException privilegedActionException) {
+            if (privilegedActionException.getCause() instanceof IOException) {
+                throw (IOException) privilegedActionException.getCause();
+            } else {
+                throw new IOException(privilegedActionException.getCause());
+            }
         }
     }
 }

@@ -30,14 +30,14 @@ public class TestConstants {
 
         return Settings.builder()
                 .put(
-                        OciObjectStorageClientSettings.ENDPOINT_SETTING.getKey(),
+                        OciObjectStorageRepository.ENDPOINT_SETTING.getKey(),
                         url)
-                .put(OciObjectStorageClientSettings.REGION_SETTING.getKey(), DEV_REGION)
-                .put(OciObjectStorageClientSettings.CREDENTIALS_FILE_SETTING.getKey(), keyFile)
-                .put(OciObjectStorageClientSettings.INSTANCE_PRINCIPAL.getKey(), false)
-                .put(OciObjectStorageClientSettings.FINGERPRINT_SETTING.getKey(), "fingerprint")
-                .put(OciObjectStorageClientSettings.TENANT_ID_SETTING.getKey(), "tenantId")
-                .put(OciObjectStorageClientSettings.USER_ID_SETTING.getKey(), "userId")
+                .put(OciObjectStorageRepository.REGION_SETTING.getKey(), DEV_REGION)
+                .put(OciObjectStorageRepository.CREDENTIALS_FILE_SETTING.getKey(), keyFile)
+                .put(OciObjectStorageRepository.INSTANCE_PRINCIPAL.getKey(), false)
+                .put(OciObjectStorageRepository.FINGERPRINT_SETTING.getKey(), "fingerprint")
+                .put(OciObjectStorageRepository.TENANT_ID_SETTING.getKey(), "tenantId")
+                .put(OciObjectStorageRepository.USER_ID_SETTING.getKey(), "userId")
                 .put(OciObjectStorageRepository.BASE_PATH_SETTING.getKey(), "my_base_path")
                 .put(
                         OciObjectStorageRepository.BUCKET_COMPARTMENT_ID_SETTING.getKey(),

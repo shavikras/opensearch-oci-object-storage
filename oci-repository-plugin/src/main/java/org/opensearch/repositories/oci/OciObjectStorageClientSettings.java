@@ -11,20 +11,13 @@
 
 package org.opensearch.repositories.oci;
 
-import static org.opensearch.common.settings.Setting.boolSetting;
-import static org.opensearch.common.settings.Setting.simpleString;
+import static org.opensearch.repositories.oci.OciObjectStorageRepository.*;
 
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.util.function.Supplier;
+import java.util.Objects;
 import lombok.extern.log4j.Log4j2;
 import org.opensearch.cluster.metadata.RepositoryMetadata;
-import org.opensearch.common.io.PathUtils;
-import org.opensearch.common.settings.Setting;
+import org.opensearch.common.settings.Settings;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.Region;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.BasicAuthenticationDetailsProvider;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 
 /** Container for OCI object storage clients settings. */
 @Log4j2
@@ -32,125 +25,118 @@ public class OciObjectStorageClientSettings {
     public static final String DEV_REGION = "us-ashburn-1";
 
     /** Path to a credentials file */
-    public static final Setting<String> CREDENTIALS_FILE_SETTING =
-            simpleString("credentials_file", Setting.Property.NodeScope, Setting.Property.Dynamic);
 
     /** An override for the Object Storage endpoint to connect to. */
-    public static final Setting<String> ENDPOINT_SETTING =
-            simpleString("endpoint", Setting.Property.NodeScope, Setting.Property.Dynamic);
 
     /** An override for the region. */
-    public static final Setting<String> REGION_SETTING =
-            simpleString("region", Setting.Property.NodeScope, Setting.Property.Dynamic);
-
-    public static final Setting<String> USER_ID_SETTING =
-            simpleString("userId", Setting.Property.NodeScope, Setting.Property.Dynamic);
-
-    public static final Setting<String> TENANT_ID_SETTING =
-            simpleString("tenantId", Setting.Property.NodeScope, Setting.Property.Dynamic);
-
-    public static final Setting<String> FINGERPRINT_SETTING =
-            simpleString("fingerprint", Setting.Property.NodeScope, Setting.Property.Dynamic);
-
-    public static final Setting<Boolean> INSTANCE_PRINCIPAL =
-            boolSetting(
-                    "useInstancePrincipal",
-                    false,
-                    Setting.Property.NodeScope,
-                    Setting.Property.Dynamic);
+    private final String clientName;
 
     /** The credentials used by the client to connect to the Storage endpoint. */
-    private final BasicAuthenticationDetailsProvider authenticationDetailsProvider;
 
     /** The Storage endpoint URL the client should talk to. Null value sets the default. */
     private final String endpoint;
 
+    private final boolean isInstancePrincipal;
+    private String userId;
+    private String tenantId;
+    private String fingerprint;
+    private String credentialsFilePath;
+
+    /** The region to access storage service */
+    private Region region;
+
     OciObjectStorageClientSettings(final RepositoryMetadata metadata) {
-        this.endpoint = OciObjectStorageRepository.getSetting(ENDPOINT_SETTING, metadata);
-        final boolean isInstancePrincipal =
-                OciObjectStorageRepository.getSetting(INSTANCE_PRINCIPAL, metadata);
+        Settings settings = metadata.settings();
+        this.clientName = CLIENT_NAME_SETTINGS.get(settings);
+        this.endpoint = ENDPOINT_SETTING.get(settings);
+        this.isInstancePrincipal = INSTANCE_PRINCIPAL.get(settings);
 
         // If we are not using instance principal we are going to have to provide user principal
         // info
         if (!isInstancePrincipal) {
-            final String userId = OciObjectStorageRepository.getSetting(USER_ID_SETTING, metadata);
-            final String tenantId =
-                    OciObjectStorageRepository.getSetting(TENANT_ID_SETTING, metadata);
-            final String fingerprint =
-                    OciObjectStorageRepository.getSetting(FINGERPRINT_SETTING, metadata);
-            final String credentialsFilePath =
-                    OciObjectStorageRepository.getSetting(CREDENTIALS_FILE_SETTING, metadata);
-            final String regionStr =
-                    OciObjectStorageRepository.getSetting(REGION_SETTING, metadata);
-
-            final Region region = Region.fromRegionCodeOrId(regionStr);
-
-            log.info(
-                    "Initializing client settings with:\n"
-                            + " userId: {}\n"
-                            + " tenantId: {}\n"
-                            + " fingerPrint: {}\n"
-                            + " credentialsFilePath {}\n"
-                            + "region: {}\n",
-                    userId,
-                    tenantId,
-                    fingerprint,
-                    credentialsFilePath,
-                    region);
-            this.authenticationDetailsProvider =
-                    toAuthDetailsProvider(
-                            () -> {
-                                try {
-                                    return Files.newInputStream(PathUtils.get(credentialsFilePath));
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            },
-                            region,
-                            userId,
-                            tenantId,
-                            fingerprint);
-        } else {
-            // We are using instance principal and therefore we are going to use instance principal
-            // provider
-            log.info("Initializing client using instance principals");
-            this.authenticationDetailsProvider = toAuthDetailsProvider();
+            // If we are not using instance principal we are going to have to provide user principal
+            this.userId = USER_ID_SETTING.get(settings);
+            this.tenantId = TENANT_ID_SETTING.get(settings);
+            this.fingerprint = FINGERPRINT_SETTING.get(settings);
+            this.credentialsFilePath = CREDENTIALS_FILE_SETTING.get(settings);
+            this.region = Region.fromRegionCodeOrId(REGION_SETTING.get(settings));
         }
+        // We are using instance principal and therefore we are going to use instance principal
+        // provider
+    }
+
+    public String getClientName() {
+        return clientName;
     }
 
     public String getEndpoint() {
         return endpoint;
     }
 
-    public BasicAuthenticationDetailsProvider getAuthenticationDetailsProvider() {
-        return authenticationDetailsProvider;
+    public boolean isInstancePrincipal() {
+        return isInstancePrincipal;
     }
 
-    private static BasicAuthenticationDetailsProvider toAuthDetailsProvider(
-            Supplier<InputStream> privateKeySupplier,
-            Region region,
-            String userId,
-            String tenantId,
-            String fingerprint) {
-        /*
-         * The SDK's "region code" is the internal enum's public region name.
-         */
-
-        return SimpleAuthenticationDetailsProvider.builder()
-                .userId(userId)
-                .tenantId(tenantId)
-                .region(region)
-                .fingerprint(fingerprint)
-                .privateKeySupplier(privateKeySupplier)
-                .build();
+    public String getUserId() {
+        return userId;
     }
 
-    private static BasicAuthenticationDetailsProvider toAuthDetailsProvider() {
-        try {
-            return InstancePrincipalsAuthenticationDetailsProvider.builder().build();
-        } catch (Exception ex) {
-            log.error("Failure calling toAuthDetailsProvider", ex);
-            throw ex;
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public String getFingerprint() {
+        return fingerprint;
+    }
+
+    public String getCredentialsFilePath() {
+        return credentialsFilePath;
+    }
+
+    public Region getRegion() {
+        return region;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof OciObjectStorageClientSettings)) return false;
+        OciObjectStorageClientSettings that = (OciObjectStorageClientSettings) o;
+        return isInstancePrincipal == that.isInstancePrincipal
+                && clientName.equals(that.clientName)
+                && endpoint.equals(that.endpoint)
+                && Objects.equals(userId, that.userId)
+                && Objects.equals(tenantId, that.tenantId)
+                && Objects.equals(fingerprint, that.fingerprint)
+                && Objects.equals(credentialsFilePath, that.credentialsFilePath)
+                && Objects.equals(region, that.region);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                clientName,
+                endpoint,
+                isInstancePrincipal,
+                userId,
+                tenantId,
+                fingerprint,
+                credentialsFilePath,
+                region);
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder("client_settings");
+        sb.append("{");
+        sb.append("endpoint='" + endpoint + '\'');
+        sb.append(", isInstancePrincipal=" + isInstancePrincipal);
+        if (!isInstancePrincipal) {
+            sb.append(", userId='" + userId + '\'');
+            sb.append(", tenantId='" + tenantId + '\'');
+            sb.append(", region=" + region);
         }
+        sb.append("}");
+        return sb.toString();
     }
 }

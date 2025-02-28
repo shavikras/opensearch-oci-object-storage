@@ -63,6 +63,7 @@ public class OciObjectStoragePluginTests extends OpenSearchIntegTestCase {
     protected Collection<Class<? extends Plugin>> nodePlugins() {
         return Collections.unmodifiableCollection(
                 Lists.newArrayList(Netty4Plugin.class, OciObjectStoragePlugin.class));
+
     }
     /** ******************************* */
     @Test
