@@ -47,7 +47,6 @@ public class OciObjectStoragePlugin extends Plugin implements RepositoryPlugin {
 
     @SuppressWarnings("deprecation")
     public OciObjectStoragePlugin(final Settings settings) {
-        loadDynamicCoreRegions();
         this.storageService = createStorageService();
         this.settings = settings;
 
@@ -71,7 +70,7 @@ public class OciObjectStoragePlugin extends Plugin implements RepositoryPlugin {
                                     });
                             return null;
                         });
-
+        // loadDynamicCoreRegions();
         // Hack to force Jersey to load first as a default provider
         HttpProvider.getDefault();
     }

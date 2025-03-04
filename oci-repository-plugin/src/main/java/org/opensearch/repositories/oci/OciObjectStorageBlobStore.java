@@ -577,8 +577,8 @@ class OciObjectStorageBlobStore implements BlobStore {
                                     .build());
         } catch (Exception e) {
 
-            if (e.getCause() instanceof BmcException) {
-                final BmcException bmcEx = (BmcException) e.getCause();
+            if (e instanceof BmcException) {
+                final BmcException bmcEx = (BmcException) e;
                 if (bmcEx.getStatusCode() == HttpURLConnection.HTTP_NOT_FOUND) {
                     log.warn("blob couldn't be found");
                     return false;

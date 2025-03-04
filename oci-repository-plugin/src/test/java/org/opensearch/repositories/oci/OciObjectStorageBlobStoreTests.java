@@ -11,16 +11,6 @@
 
 package org.opensearch.repositories.oci;
 
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.ObjectStorage;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.ObjectStorageAsync;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.ObjectStorageAsyncClient;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.ObjectStorageClient;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.model.CreateBucketDetails;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.requests.CreateBucketRequest;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.requests.GetBucketRequest;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.responses.CreateBucketResponse;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.responses.GetBucketResponse;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.responses.AsyncHandler;
 import org.assertj.core.api.Assertions;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -143,7 +133,7 @@ public class OciObjectStorageBlobStoreTests {
         rootBlobContainer.writeBlobAtomic(blobName, new ByteArrayInputStream(blobBytes), blobBytes.length, true);
 
         Assertions.assertThat(rootBlobContainer.blobExists(blobName)).isTrue();
-        final byte[] returnedBytes =rootBlobContainer.readBlob(blobName, 0, 2).readAllBytes();
+        final byte[] returnedBytes = rootBlobContainer.readBlob(blobName, 0, 2).readAllBytes();
         final String returnedBlobData = new String(returnedBytes, StandardCharsets.UTF_8);
         Assertions.assertThat(returnedBlobData).isEqualTo("my");
     }

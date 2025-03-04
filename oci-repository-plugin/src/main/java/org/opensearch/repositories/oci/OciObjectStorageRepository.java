@@ -108,8 +108,8 @@ public class OciObjectStorageRepository extends BlobStoreRepository {
             final ClusterService clusterService,
             final RecoverySettings recoverySettings) {
         super(metadata, namedXContentRegistry, clusterService, recoverySettings);
-        validateOCIRepoMetadata(metadata);
         loadOCIRepoMetadata();
+        validateOCIRepoMetadata(metadata);
         this.storageService = storageService;
         // Refreshes the client settings
         storageService.refreshAndClearCache(
@@ -159,15 +159,15 @@ public class OciObjectStorageRepository extends BlobStoreRepository {
         validateSetting(BUCKET_SETTING, repositoryMetadata);
         validateSetting(NAMESPACE_SETTING, repositoryMetadata);
         validateSetting(BUCKET_COMPARTMENT_ID_SETTING, repositoryMetadata);
-        validateSetting(BASE_PATH_SETTING, repositoryMetadata);
+        // validateSetting(BASE_PATH_SETTING, repositoryMetadata);
         boolean isInstancePrincipal = INSTANCE_PRINCIPAL.get(repositoryMetadata.settings());
-        if (!isInstancePrincipal) {
-            validateSetting(USER_ID_SETTING, repositoryMetadata);
-            validateSetting(TENANT_ID_SETTING, repositoryMetadata);
-            validateSetting(FINGERPRINT_SETTING, repositoryMetadata);
-            validateSetting(CREDENTIALS_FILE_SETTING, repositoryMetadata);
-            validateSetting(REGION_SETTING, repositoryMetadata);
-        }
+        //        if (!isInstancePrincipal) {
+        //            validateSetting(USER_ID_SETTING, repositoryMetadata);
+        //            validateSetting(TENANT_ID_SETTING, repositoryMetadata);
+        //            validateSetting(FINGERPRINT_SETTING, repositoryMetadata);
+        //            validateSetting(CREDENTIALS_FILE_SETTING, repositoryMetadata);
+        //            validateSetting(REGION_SETTING, repositoryMetadata);
+        //        }
     }
 
     /**

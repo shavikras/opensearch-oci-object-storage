@@ -40,6 +40,19 @@ public class OciHttpHandler implements HttpHandler {
 
     public OciHttpHandler() {
         log.info("Initializing OciHttpHandler");
+        addBucket("listChildren");
+        addBucket("testBlobStoreWriteBlob");
+        addBucket("testBlobWriteBlob_atomic");
+        addBucket("testBlobStoreRead_readRange");
+        addBucket("testBlobStoreDelete");
+        addBucket("forceBucketCreationTest");
+        addBucket("testBlobWriteBlob_atomic");
+        addBucket("mySnapshotBucket");
+    }
+
+    private void addBucket(String listChildren) {
+        final LocalBucket localBucket = new LocalBucket(listChildren);
+        buckets.put(listChildren, localBucket);
     }
 
     @Override
@@ -187,8 +200,7 @@ public class OciHttpHandler implements HttpHandler {
         if (buckets.containsKey(bucketName)) {
             throw new RuntimeException("Bucket already exists");
         }
-        final LocalBucket localBucket = new LocalBucket(bucketName);
-        buckets.put(bucketName, localBucket);
+        addBucket(bucketName);
 
         final Bucket bucket = Bucket.builder().name(bucketName).build();
         final String bucketStr = MAPPER.writeValueAsString(bucket);
