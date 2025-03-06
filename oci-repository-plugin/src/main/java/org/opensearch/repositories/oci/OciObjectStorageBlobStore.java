@@ -317,32 +317,10 @@ class OciObjectStorageBlobStore implements BlobStore {
      * @return the InputStream used to read the blob's content
      */
     InputStream readBlob(String blobName) throws IOException {
-        final String opcClientRequestId = createClientRequestId("getObjects");
-        final long startTime = System.currentTimeMillis();
-        try (ObjectStorageClientReference clientRef = clientReference()) {
-            return SocketAccess.doPrivilegedIOException(
-                    () -> {
-                        log.debug(
-                                "Getting object from '/n/{}/b/{}/o/{}'." + " OPC-REQUEST-ID: {}",
-                                namespace,
-                                bucketName,
-                                blobName,
-                                opcClientRequestId);
-                        DownloadConfiguration downloadConfiguration =
-                                DownloadConfiguration.builder().build();
-                        DownloadManager downloadManager =
-                                new DownloadManager(clientRef.get(), downloadConfiguration);
-                        return downloadManager
-                                .getObject(
-                                        GetObjectRequest.builder()
-                                                .bucketName(bucketName)
-                                                .namespaceName(namespace)
-                                                .objectName(blobName)
-                                                .retryConfiguration(RETRY_CONFIGURATION)
-                                                .build())
-                                .getInputStream();
-                    });
-        }
+        return SocketAccess.doPrivilegedIOException(
+                () -> {
+                    return getObject(blobName);
+                });
     }
 
     /**
@@ -354,39 +332,10 @@ class OciObjectStorageBlobStore implements BlobStore {
      * @return the InputStream used to read the blob's content
      */
     InputStream readBlob(String blobName, long position, long length) throws IOException {
-        final String opcClientRequestId = createClientRequestId("getObjects");
-        final long startTime = System.currentTimeMillis();
-
-        if (position < 0L) {
-            throw new IllegalArgumentException("position must be non-negative");
-        }
-        if (length < 0) {
-            throw new IllegalArgumentException("length must be non-negative");
-        }
-        if (length == 0) {
-            return new ByteArrayInputStream(new byte[0]);
-        }
-
-        try (ObjectStorageClientReference clientRef = clientReference()) {
-            return SocketAccess.doPrivilegedIOException(
-                    () -> {
-                        // configure download settings
-                        DownloadConfiguration downloadConfiguration =
-                                DownloadConfiguration.builder().build();
-                        DownloadManager downloadManager =
-                                new DownloadManager(clientRef.get(), downloadConfiguration);
-                        return downloadManager
-                                .getObject(
-                                        GetObjectRequest.builder()
-                                                .bucketName(bucketName)
-                                                .namespaceName(namespace)
-                                                .objectName(blobName)
-                                                .retryConfiguration(RETRY_CONFIGURATION)
-                                                .range(new Range(position, position + length - 1))
-                                                .build())
-                                .getInputStream();
-                    });
-        }
+        return SocketAccess.doPrivilegedIOException(
+                () -> {
+                    return getObject(blobName, position, length);
+                });
     }
 
     /**
@@ -650,6 +599,70 @@ class OciObjectStorageBlobStore implements BlobStore {
         final String uuid = UUID.randomUUID().toString();
         log.debug("Using request ID {} for {}", uuid, operation);
         return uuid;
+    }
+
+    private InputStream getObject(String blobName) throws IOException {
+        final String opcClientRequestId = createClientRequestId("getObjects");
+        final long startTime = System.currentTimeMillis();
+        try (ObjectStorageClientReference clientRef = clientReference()) {
+            //            return SocketAccess.doPrivilegedIOException(
+            //                    () -> {
+            log.debug(
+                    "Getting object from '/n/{}/b/{}/o/{}'." + " OPC-REQUEST-ID: {}",
+                    namespace,
+                    bucketName,
+                    blobName,
+                    opcClientRequestId);
+            DownloadConfiguration downloadConfiguration = DownloadConfiguration.builder().build();
+            DownloadManager downloadManager =
+                    new DownloadManager(clientRef.get(), downloadConfiguration);
+            return downloadManager
+                    .getObject(
+                            GetObjectRequest.builder()
+                                    .bucketName(bucketName)
+                                    .namespaceName(namespace)
+                                    .objectName(blobName)
+                                    .retryConfiguration(RETRY_CONFIGURATION)
+                                    .build())
+                    .getInputStream();
+            // });
+        }
+    }
+
+    private InputStream getObject(String blobName, long position, long length) throws IOException {
+        final String opcClientRequestId = createClientRequestId("getObjects");
+        final long startTime = System.currentTimeMillis();
+
+        if (position < 0L) {
+            throw new IllegalArgumentException("position must be non-negative");
+        }
+        if (length < 0) {
+            throw new IllegalArgumentException("length must be non-negative");
+        }
+        if (length == 0) {
+            return new ByteArrayInputStream(new byte[0]);
+        }
+
+        try (ObjectStorageClientReference clientRef = clientReference()) {
+            //            return SocketAccess.doPrivilegedIOException(
+            //                    () -> {
+            // configure download settings
+            DownloadConfiguration downloadConfiguration = DownloadConfiguration.builder().build();
+
+            DownloadManager downloadManager =
+                    new DownloadManager(clientRef.get(), downloadConfiguration);
+            return downloadManager
+                    .getObject(
+                            GetObjectRequest.builder()
+                                    .bucketName(bucketName)
+                                    .namespaceName(namespace)
+                                    .objectName(blobName)
+                                    .retryConfiguration(RETRY_CONFIGURATION)
+                                    .range(new Range(position, position + length - 1))
+                                    .build())
+                    .getInputStream();
+            // });
+        }
     }
 
     /** Uploads a file to object storage. */

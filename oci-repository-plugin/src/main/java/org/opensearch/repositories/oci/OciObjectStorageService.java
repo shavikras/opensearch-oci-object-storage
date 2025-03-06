@@ -27,7 +27,7 @@ import org.opensearch.repositories.oci.sdk.com.oracle.bmc.ClientConfiguration;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.Region;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.BasicAuthenticationDetailsProvider;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.SessionTokenAuthenticationDetailsProvider;
+import org.opensearch.repositories.oci.sdk.com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.ObjectStorageClient;
 
 /** Service class to hold client instances */
@@ -176,20 +176,21 @@ public class OciObjectStorageService implements Closeable {
          */
 
         // build the new lazy clients
-        //        return SimpleAuthenticationDetailsProvider.builder()
-        //                .userId(userId)
-        //                .tenantId(tenantId)
-        //                // we will release the previous client for this entry if existed
-        //                .region(region)
-        //                .fingerprint(fingerprint)
-        //                .privateKeySupplier(privateKeySupplier)
-        //                .build();
+        return SimpleAuthenticationDetailsProvider.builder()
+                .userId(userId)
+                .tenantId(tenantId)
+                // we will release the previous client for this entry if existed
+                .region(region)
+                .fingerprint(fingerprint)
+                .privateKeySupplier(privateKeySupplier)
+                .build();
 
-        try {
-            return new SessionTokenAuthenticationDetailsProvider("~/.oci/config", "oc1.ssh");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        //        try {
+        //            return new SessionTokenAuthenticationDetailsProvider("~/.oci/config",
+        // "oc1.ssh");
+        //        } catch (IOException e) {
+        //            throw new RuntimeException(e);
+        //        }
     }
 
     private BasicAuthenticationDetailsProvider toAuthDetailsProvider() {

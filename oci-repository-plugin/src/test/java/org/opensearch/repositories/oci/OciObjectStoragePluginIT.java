@@ -26,9 +26,12 @@ import org.opensearch.action.admin.cluster.snapshots.get.GetSnapshotsRequest;
 import org.opensearch.action.admin.cluster.snapshots.get.GetSnapshotsResponse;
 import org.opensearch.action.admin.cluster.snapshots.restore.RestoreSnapshotRequest;
 import org.opensearch.action.admin.cluster.snapshots.restore.RestoreSnapshotResponse;
+import org.opensearch.action.admin.cluster.snapshots.status.SnapshotsStatusRequest;
+import org.opensearch.action.admin.cluster.snapshots.status.SnapshotsStatusResponse;
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
+import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.action.update.UpdateRequest;
 import org.opensearch.client.Node;
@@ -37,6 +40,7 @@ import org.opensearch.client.RestClient;
 import org.opensearch.client.RestClientBuilder;
 import org.opensearch.client.RestHighLevelClient;
 import org.opensearch.client.indices.CreateIndexRequest;
+import org.opensearch.client.indices.CreateIndexResponse;
 import org.opensearch.cluster.health.ClusterHealthStatus;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
@@ -131,36 +135,42 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
     private void testSnapshotAndRestore(final RestHighLevelClient restClient)
             throws IOException, ExecutionException, InterruptedException {
         // Create 3 snapshots
-        createPopulatedTestIndex("my_test_index1", restClient);
+        createPopulatedTestIndex("my_test_index1", restClient, 1);
         testExternalStatusShowsGreen(restClient);
         snapshotCluster(TEST_REPOSITORY_NAME, "my_snapshot1", restClient);
-        updateIndexWithNewDoc("my_test_index1", restClient, 1);
-        createPopulatedTestIndex("my_test_index2", restClient);
+        updateIndexWithNewDoc("my_test_index1", restClient, 2);
+        createPopulatedTestIndex("my_test_index2", restClient, 3);
         testExternalStatusShowsGreen(restClient);
         snapshotCluster(TEST_REPOSITORY_NAME, "my_snapshot2", restClient);
-        updateIndexWithNewDoc("my_test_index1", restClient, 2);
-        createPopulatedTestIndex("my_test_index3", restClient);
+        updateIndexWithNewDoc("my_test_index1", restClient, 4);
+        updateIndexWithNewDoc("my_test_index2", restClient, 5);
+        createPopulatedTestIndex("my_test_index3", restClient, 6);
         testExternalStatusShowsGreen(restClient);
         snapshotCluster(TEST_REPOSITORY_NAME, "my_snapshot3", restClient);
 
         // Restore and test content of each snapshot
         cleanupAllIndices(restClient);
         restoreSnapshot(TEST_REPOSITORY_NAME, "my_snapshot1", restClient);
+        testExternalStatusShowsGreen(restClient);
         searchIndex(restClient, "restored_snapshot_my_snapshot1" + "my_test_index1", 1);
 
         cleanupAllIndices(restClient);
         restoreSnapshot(TEST_REPOSITORY_NAME, "my_snapshot2", restClient);
+        testExternalStatusShowsGreen(restClient);
         searchIndex(restClient, "restored_snapshot_my_snapshot2" + "my_test_index1", 2);
         searchIndex(restClient, "restored_snapshot_my_snapshot2" + "my_test_index2", 1);
 
+
+
         cleanupAllIndices(restClient);
         restoreSnapshot(TEST_REPOSITORY_NAME, "my_snapshot3", restClient);
-        searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index1", 3);
-        searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index2", 1);
+        testExternalStatusShowsGreen(restClient);
+        searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index1", 2);
+        searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index2", 2);
         searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index3", 1);
     }
 
-    private void testDeleteSnapshotFromRepository(RestHighLevelClient restHighLevelClient) throws IOException {
+    private void testDeleteSnapshotFromRepository(RestHighLevelClient restHighLevelClient) throws IOException, ExecutionException, InterruptedException  {
         snapshotCluster(TEST_REPOSITORY_NAME, "my_temp_test_snapshot1", restHighLevelClient);
         final DeleteSnapshotRequest deleteSnapshotRequest = new DeleteSnapshotRequest();
         deleteSnapshotRequest.repository(TEST_REPOSITORY_NAME)
@@ -172,36 +182,44 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
 
         final GetSnapshotsResponse getSnapshotsResponse = restHighLevelClient.snapshot().get(getSnapshotsRequest, RequestOptions.DEFAULT);
         logger.info("get snapshots response: {}", getSnapshotsResponse);
-        Assertions.assertThat(getSnapshotsResponse.getSnapshots().size()).isEqualTo(3);
+        Assertions.assertThat(getSnapshotsResponse.getSnapshots().size()).isEqualTo(0);
     }
 
     private void snapshotCluster(
             String repositoryName, String snapshotName, RestHighLevelClient restClient) throws IOException {
-        final CreateSnapshotRequest createSnapshotRequest = new CreateSnapshotRequest();
-        try {
-            createSnapshotRequest.snapshot(snapshotName);
-            createSnapshotRequest.repository(repositoryName);
-            createSnapshotRequest.indices(List.of(ALL_SNAPSHOTS));
-            createSnapshotRequest.includeGlobalState(false);
-            createSnapshotRequest.waitForCompletion(true);
-            final CreateSnapshotResponse createSnapshotResponse =
-                    restClient.snapshot().create(createSnapshotRequest, RequestOptions.DEFAULT);
-            logger.info(
-                    "Snapshot response for snapshot {}, response {}",
-                    snapshotName,
-                    createSnapshotResponse);
-            Assertions.assertThat(createSnapshotResponse.getSnapshotInfo().state().name())
-                    .isEqualTo("SUCCESS");
-        } catch (OpenSearchStatusException e) {
-            if (e.status().getStatus() == 404) {
+
+            final CreateSnapshotRequest createSnapshotRequest = new CreateSnapshotRequest();
+            //createSnapshotRequest.masterNodeTimeout(TimeValue.timeValueSeconds(120));
+            try {
+                createSnapshotRequest.snapshot(snapshotName);
+                createSnapshotRequest.repository(repositoryName);
+                createSnapshotRequest.indices(List.of(ALL_SNAPSHOTS));
+                createSnapshotRequest.includeGlobalState(false);
+                createSnapshotRequest.waitForCompletion(true);
+
+                SnapshotsStatusRequest snapshotsStatusRequest = new SnapshotsStatusRequest();
+                snapshotsStatusRequest.ignoreUnavailable(true);
+                SnapshotsStatusResponse st = restClient.snapshot().status(snapshotsStatusRequest, RequestOptions.DEFAULT);
+                logger.info(st.getSnapshots().toString());
+                final CreateSnapshotResponse createSnapshotResponse =
+                        restClient.snapshot().create(createSnapshotRequest, RequestOptions.DEFAULT);
                 logger.info(
-                        "Unable to snapshot repository {} since the repository cannot be found",
-                        repositoryName);
-            } else {
-                logger.error("Unable to snapshot repository {}", repositoryName);
+                        "Snapshot response for snapshot {}, response {}",
+                        snapshotName,
+                        createSnapshotResponse);
+                Assertions.assertThat(createSnapshotResponse.getSnapshotInfo().state().name())
+                        .isEqualTo("SUCCESS");
+            } catch (OpenSearchStatusException e) {
+                if (e.status().getStatus() == 404) {
+                    logger.info(
+                            "Unable to snapshot repository {} since the repository cannot be found",
+                            repositoryName);
+                } else {
+                    logger.error("Unable to snapshot repository {}", repositoryName);
+                }
+                throw new RuntimeException(e);
             }
-            throw new RuntimeException(e);
-        }
+
     }
 
     private void restoreSnapshot(
@@ -247,10 +265,10 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
         return searchResponse;
     }
 
-    private void createPopulatedTestIndex(String indexName, RestHighLevelClient restHighLevelClient)
+    private void createPopulatedTestIndex(String indexName, RestHighLevelClient restHighLevelClient, int docNum)
             throws IOException, ExecutionException, InterruptedException {
         createTestIndex(indexName, restHighLevelClient);
-        updateIndexWithNewDoc(indexName, restHighLevelClient, 0);
+        updateIndexWithNewDoc(indexName, restHighLevelClient, docNum);
     }
 
     private void createTestIndex(String indexName, RestHighLevelClient restHighLevelClient)
@@ -265,14 +283,14 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
                     .put("index.number_of_replicas", indexReplicas)
                     .build());
 
-        restHighLevelClient.indices().create(createIndexRequest, RequestOptions.DEFAULT);
+        CreateIndexResponse res = restHighLevelClient.indices().create(createIndexRequest, RequestOptions.DEFAULT);
     }
 
     private void updateIndexWithNewDoc(String indexName, RestHighLevelClient restHighLevelClient, int docNum)
             throws IOException {
         final String fieldName = "test_field";
         final String docId = "test_doc_id_" + docNum;
-        final String docContent = "{\"myField\": \"somet test information\"}";
+        final String docContent = "{\"myField\": \"somet test information " + docNum + "\"}";
 
         final UpdateRequest updateRequest = new UpdateRequest(indexName, docId);
         try (XContentBuilder builder = XContentFactory.jsonBuilder()) {

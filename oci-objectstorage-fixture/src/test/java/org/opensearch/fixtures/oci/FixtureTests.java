@@ -212,12 +212,12 @@ public class FixtureTests {
                         GetObjectRequest.builder()
                                 .namespaceName(NAMESPACE)
                                 .bucketName(BUCKET_NAME)
-                                .range(new Range(0L, 1L))
+                                .range(new Range(0L, 8L))
                                 .objectName("/myPrefix/myObject")
                                 .build());
         log.info("getObjectResponse: {}", getObjectResponse);
         assertEquals(
-                "my", IOUtils.toString(getObjectResponseWithRange.getInputStream(),"UTF-8"));
+                "myContent", IOUtils.toString(getObjectResponseWithRange.getInputStream(),"UTF-8"));
 
         // 5. Delete object
         final DeleteObjectResponse deleteObjectResponse =

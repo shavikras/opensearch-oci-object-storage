@@ -26,7 +26,7 @@ apply plugin: 'idea'
 dependencies {
     implementation(project(path: ':oci-objectstorage-client-shaded', configuration: 'shadow'))
 
-    implementation "commons-io:commons-io:2.16.1"
+    implementation "commons-io:commons-io:2.16.0"
     implementation "com.google.guava:guava:33.1.0-jre"
     implementation "com.fasterxml.jackson.core:jackson-databind:${jackson_version}"
     implementation "org.apache.logging.log4j:log4j-api:2.21.0"

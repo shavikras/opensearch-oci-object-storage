@@ -36,7 +36,7 @@ public class OciHttpHandler implements HttpHandler {
         MAPPER.setFilterProvider(new SimpleFilterProvider().setFailOnUnknownId(false));
     }
 
-    private final ConcurrentHashMap<String, LocalBucket> buckets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, LocalBucket> buckets = new ConcurrentHashMap<>(101);
 
     public OciHttpHandler() {
         log.info("Initializing OciHttpHandler");
@@ -240,6 +240,7 @@ public class OciHttpHandler implements HttpHandler {
 
         Preconditions.checkArgument(buckets.containsKey(bucketName), "Bucket doesn't exist");
         final LocalBucket bucket = buckets.get(bucketName);
+
         bucket.putObject(objectName, exchange.getRequestBody());
 
         log.info(
@@ -269,7 +270,9 @@ public class OciHttpHandler implements HttpHandler {
         final OSObject object = bucket.getObject(objectName);
         if (object != null) {
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0);
+            String[] names = objectName.split("/");
+            // names[names.length - 1].length() + 1
+            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, object.getBytes().length);
             if (range != null) {
                 exchange.getResponseBody()
                         .write(
@@ -306,7 +309,7 @@ public class OciHttpHandler implements HttpHandler {
             final String str = MAPPER.writeValueAsString(headObjectResponse);
             final byte[] response = str.getBytes(StandardCharsets.UTF_8);
 
-            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1);
+            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0L);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -345,6 +348,7 @@ public class OciHttpHandler implements HttpHandler {
         exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, response.length);
         exchange.getResponseBody().write(response);
         exchange.close();
+        log.info("Response : " + str);
     }
 
     private void deleteObject(
@@ -362,7 +366,7 @@ public class OciHttpHandler implements HttpHandler {
 
         bucket.deleteObject(objectName);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1);
+        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0L);
         exchange.close();
     }
 
