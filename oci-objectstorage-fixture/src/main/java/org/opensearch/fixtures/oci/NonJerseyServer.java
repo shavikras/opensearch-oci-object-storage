@@ -5,8 +5,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 public class NonJerseyServer implements Closeable {
     public static final String DEFAULT_BASE_URI = "http://localhost:8080/";

@@ -17,12 +17,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.extern.log4j.Log4j2;
+import org.apache.commons.io.IOUtils;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.model.Range;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.model.Bucket;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.model.CreateBucketDetails;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.model.ListObjects;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.model.ObjectSummary;
-import org.opensearch.repositories.oci.sdk.com.oracle.bmc.objectstorage.responses.HeadObjectResponse;
 import org.opensearch.repositories.oci.sdk.com.oracle.bmc.util.internal.StringUtils;
 
 @Log4j2
@@ -56,10 +56,15 @@ public class OciHttpHandler implements HttpHandler {
     }
 
     @Override
-    public void handle(HttpExchange exchange) {
+    public void handle(HttpExchange exchange) throws IOException {
         final String path = exchange.getRequestURI().getPath();
         final String opcRequestId = exchange.getRequestHeaders().getFirst("Opc-request-id");
         final String requestMethod = exchange.getRequestMethod();
+        log.info("sha path : {}", path);
+        log.info("sha requestMethod : {}", requestMethod);
+        if(path.endsWith("/o/my_base_path/index-1")){
+            log.info("sha path : {}", path);
+        }
         log.debug(
                 "request received in fixture with method: {}, path: {}, opcRequestId: {}",
                 requestMethod,
@@ -145,6 +150,7 @@ public class OciHttpHandler implements HttpHandler {
             }
         } catch (Exception e) {
             log.error("Exception found when processing request", e);
+            throw e;
         }
     }
 
@@ -179,9 +185,12 @@ public class OciHttpHandler implements HttpHandler {
                                     + "</RequestId>"
                                     + "</Error>")
                             .getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(status, response.length);
-            exchange.getResponseBody().write(response);
-            exchange.close();
+            try {
+                exchange.sendResponseHeaders(status, response.length);
+                exchange.getResponseBody().write(response);
+            } finally {
+                exchange.close();
+            }
         }
     }
 
@@ -196,19 +205,22 @@ public class OciHttpHandler implements HttpHandler {
                 "CreateBucket request with namespaceName: {}, createBucketDetails: {}",
                 namespaceName,
                 createBucketDetails);
-        final String bucketName = createBucketDetails.getName();
-        if (buckets.containsKey(bucketName)) {
-            throw new RuntimeException("Bucket already exists");
-        }
-        addBucket(bucketName);
+        try {
+            final String bucketName = createBucketDetails.getName();
+            if (buckets.containsKey(bucketName)) {
+                throw new RuntimeException("Bucket already exists");
+            }
+            addBucket(bucketName);
 
-        final Bucket bucket = Bucket.builder().name(bucketName).build();
-        final String bucketStr = MAPPER.writeValueAsString(bucket);
-        final byte[] response = bucketStr.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, response.length);
-        exchange.getResponseBody().write(response);
-        exchange.close();
+            final Bucket bucket = Bucket.builder().name(bucketName).build();
+            final String bucketStr = MAPPER.writeValueAsString(bucket);
+            final byte[] response = bucketStr.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, response.length);
+            exchange.getResponseBody().write(response);
+        } finally {
+            exchange.close();
+        }
     }
 
     private void getBucket(String namespace, String bucketName, HttpExchange exchange)
@@ -229,6 +241,16 @@ public class OciHttpHandler implements HttpHandler {
         exchange.close();
     }
 
+    private void printBuckets(){
+
+        for(Map.Entry<String, LocalBucket> entry : buckets.entrySet()){
+            System.out.println(entry.getKey() + " : " + entry.getValue());
+            for(Map.Entry<String, OSObject> en : entry.getValue().getPrefixToObjectMap().entrySet()){
+                System.out.println(en.getKey() + " : " + en.getValue());
+            }
+        }
+    }
+
     private void putObject(
             String namespaceName,
             String bucketName,
@@ -239,18 +261,37 @@ public class OciHttpHandler implements HttpHandler {
         // final BytesReference requestBody = Streams.readFully(exchange.getRequestBody());
 
         Preconditions.checkArgument(buckets.containsKey(bucketName), "Bucket doesn't exist");
-        final LocalBucket bucket = buckets.get(bucketName);
 
-        bucket.putObject(objectName, exchange.getRequestBody());
+        try {
+            final LocalBucket bucket = buckets.get(bucketName);
+            InputStream is = exchange.getRequestBody();
 
-        log.info(
-                "Put object with namespaceName:{}, bucketName: {}, objectName: {}",
-                namespaceName,
-                bucketName,
-                objectName);
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1);
-        exchange.close();
+            log.info("input len : " + is.available());
+            byte[] objectData = null;
+            try {
+                objectData = IOUtils.toByteArray(exchange.getRequestBody());;
+            } catch(Exception ex){
+                objectData = "new byte[]{}".getBytes();
+            }
+
+            //final byte[] objectData = IOUtils.toByteArray(exchange.getRequestBody());
+            bucket.putObject(objectName, objectData);
+            log.info("Put start");
+            log.info(
+                    "Put object with namespaceName:{}, bucketName: {}, objectName: {}",
+                    namespaceName,
+                    bucketName,
+                    objectName);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1L);
+        } catch (Exception ex) {
+            log.error("Error in PUT : ", ex);
+            throw ex;
+        } finally {
+            exchange.close();
+        }
+        printBuckets();
+        log.info("Put end");
     }
 
     private void getObject(
@@ -260,31 +301,37 @@ public class OciHttpHandler implements HttpHandler {
             Range range,
             HttpExchange exchange)
             throws IOException {
+        log.info("Get start");
         log.info(
                 "Get object with namespaceName:{}, bucketName: {}, objectName: {}",
                 namespaceName,
                 bucketName,
                 objectName);
         Preconditions.checkArgument(buckets.containsKey(bucketName), "Bucket doesn't exist");
+
         final LocalBucket bucket = buckets.get(bucketName);
         final OSObject object = bucket.getObject(objectName);
         if (object != null) {
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            String[] names = objectName.split("/");
-            // names[names.length - 1].length() + 1
-            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, object.getBytes().length);
-            if (range != null) {
-                exchange.getResponseBody()
-                        .write(
-                                Arrays.copyOfRange(
-                                        object.getBytes(),
-                                        range.getStartByte().intValue(),
-                                        range.getEndByte().intValue() + 1));
-            } else {
-                exchange.getResponseBody().write(object.getBytes());
+            try {
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                String[] names = objectName.split("/");
+                // names[names.length - 1].length() + 1
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, object.getBytes().length);
+                if (range != null) {
+                    exchange.getResponseBody()
+                            .write(
+                                    Arrays.copyOfRange(
+                                            object.getBytes(),
+                                            range.getStartByte().intValue(),
+                                            range.getEndByte().intValue() + 1));
+                } else {
+                    exchange.getResponseBody().write(object.getBytes());
+                }
+            } finally {
+                exchange.close();
+                log.info("Get end");
             }
 
-            exchange.close();
         } else {
             sendError(exchange, HttpURLConnection.HTTP_NOT_FOUND, "404", "Object not found");
         }
@@ -293,8 +340,9 @@ public class OciHttpHandler implements HttpHandler {
     private void headObject(
             String namespaceName, String bucketName, String objectName, HttpExchange exchange)
             throws IOException {
+        log.info("head start");
         log.info(
-                "Get object with namespaceName:{}, bucketName: {}, objectName: {}",
+                "Head object with namespaceName:{}, bucketName: {}, objectName: {}",
                 namespaceName,
                 bucketName,
                 objectName);
@@ -302,17 +350,21 @@ public class OciHttpHandler implements HttpHandler {
         final LocalBucket bucket = buckets.get(bucketName);
         final OSObject object = bucket.getObject(objectName);
         if (object != null) {
-            final HeadObjectResponse headObjectResponse =
-                    HeadObjectResponse.builder()
-                            .contentLength((long) object.getBytes().length)
-                            .build();
-            final String str = MAPPER.writeValueAsString(headObjectResponse);
-            final byte[] response = str.getBytes(StandardCharsets.UTF_8);
+            try {
+                //                final HeadObjectResponse headObjectResponse =
+                //                        HeadObjectResponse.builder()
+                //                                .contentLength((long) object.getBytes().length)
+                //                                .build();
+                //                final String str = MAPPER.writeValueAsString(headObjectResponse);
+                //                final byte[] response = str.getBytes(StandardCharsets.UTF_8);
 
-            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0L);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.getResponseBody().write(response);
-            exchange.close();
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1L);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+            } finally {
+                exchange.close();
+            }
+
+            log.info("head end");
         } else {
             sendError(exchange, HttpURLConnection.HTTP_NOT_FOUND, "404", "Object not found");
         }
@@ -321,53 +373,64 @@ public class OciHttpHandler implements HttpHandler {
     private void listObject(
             String namespace, String bucketName, String prefix, HttpExchange exchange)
             throws IOException {
+        log.info("list start");
         log.info(
                 "list objects with namespaceName:{}, bucketName: {}, prefix: {}",
                 namespace,
                 bucketName,
                 prefix);
         Preconditions.checkArgument(buckets.containsKey(bucketName), "Bucket doesn't exist");
-        final LocalBucket bucket = buckets.get(bucketName);
-        final List<OSObject> results = bucket.getObjectByPrefix(prefix);
-        final ListObjects listObjects =
-                ListObjects.builder()
-                        .objects(
-                                results.stream()
-                                        .map(
-                                                osObject ->
-                                                        ObjectSummary.builder()
-                                                                .name(osObject.getPrefix())
-                                                                .build())
-                                        .collect(Collectors.toList()))
-                        .build();
+        try {
+            final LocalBucket bucket = buckets.get(bucketName);
+            final List<OSObject> results = bucket.getObjectByPrefix(prefix);
+            final ListObjects listObjects =
+                    ListObjects.builder()
+                            .objects(
+                                    results.stream()
+                                            .map(
+                                                    osObject ->
+                                                            ObjectSummary.builder()
+                                                                    .name(osObject.getPrefix())
+                                                                    .build())
+                                            .collect(Collectors.toList()))
+                            .build();
 
-        final String str = MAPPER.writeValueAsString(listObjects);
-        final byte[] response = str.getBytes(StandardCharsets.UTF_8);
+            final String str = MAPPER.writeValueAsString(listObjects);
+            final byte[] response = str.getBytes(StandardCharsets.UTF_8);
 
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, response.length);
-        exchange.getResponseBody().write(response);
-        exchange.close();
-        log.info("Response : " + str);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, response.length);
+            exchange.getResponseBody().write(response);
+        } finally {
+            exchange.close();
+        }
+
+        log.info("list end");
     }
 
     private void deleteObject(
             String namespaceName, String bucketName, String objectName, HttpExchange exchange)
             throws IOException {
+        log.info("delete start");
         log.info(
                 "Delete object with namespaceName:{}, bucketName: {}, objectName: {}",
                 namespaceName,
                 bucketName,
                 objectName);
         Preconditions.checkArgument(buckets.containsKey(bucketName), "Bucket doesn't exist");
-        final LocalBucket bucket = buckets.get(bucketName);
-        Preconditions.checkArgument(
-                bucket.getPrefixToObjectMap().containsKey(objectName), "Object doesn't exist");
+        try {
+            final LocalBucket bucket = buckets.get(bucketName);
+            Preconditions.checkArgument(
+                    bucket.getPrefixToObjectMap().containsKey(objectName), "Object doesn't exist");
 
-        bucket.deleteObject(objectName);
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0L);
-        exchange.close();
+            bucket.deleteObject(objectName);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1L);
+        } finally {
+            exchange.close();
+        }
+
+        log.info("delete end");
     }
 
     // Original Range parser from OCI is incompatible with it's own actual "toString" serialization

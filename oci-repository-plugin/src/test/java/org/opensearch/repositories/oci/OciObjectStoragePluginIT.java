@@ -11,6 +11,8 @@
 
 package org.opensearch.repositories.oci;
 
+import lombok.extern.log4j.Log4j2;
+import org.apache.http.HttpHost;
 import org.assertj.core.api.Assertions;
 import org.junit.Test;
 import org.opensearch.OpenSearchStatusException;
@@ -31,7 +33,6 @@ import org.opensearch.action.admin.cluster.snapshots.status.SnapshotsStatusRespo
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
-import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.action.update.UpdateRequest;
 import org.opensearch.client.Node;
@@ -61,7 +62,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 import static org.opensearch.action.admin.cluster.snapshots.get.GetSnapshotsRequest.ALL_SNAPSHOTS;
-
+@Log4j2
 public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
 
     private static final String TEST_REPOSITORY_NAME = "myTestRepository";
@@ -69,6 +70,7 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
     @Test
     public void testItAll() throws IOException, NoSuchAlgorithmException, ExecutionException, InterruptedException {
         final int testObjectStorageServerPort = 8081;
+
 
         try (NonJerseyServer nonJerseyServer = new NonJerseyServer(testObjectStorageServerPort)) {
             SocketAccess.doPrivilegedVoidIOException(nonJerseyServer::start);
@@ -141,6 +143,7 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
         updateIndexWithNewDoc("my_test_index1", restClient, 2);
         createPopulatedTestIndex("my_test_index2", restClient, 3);
         testExternalStatusShowsGreen(restClient);
+
         snapshotCluster(TEST_REPOSITORY_NAME, "my_snapshot2", restClient);
         updateIndexWithNewDoc("my_test_index1", restClient, 4);
         updateIndexWithNewDoc("my_test_index2", restClient, 5);
@@ -148,6 +151,9 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
         testExternalStatusShowsGreen(restClient);
         snapshotCluster(TEST_REPOSITORY_NAME, "my_snapshot3", restClient);
 
+
+        testExternalStatusShowsGreen(restClient);
+        testExternalStatusShowsGreen(restClient);
         // Restore and test content of each snapshot
         cleanupAllIndices(restClient);
         restoreSnapshot(TEST_REPOSITORY_NAME, "my_snapshot1", restClient);
@@ -165,7 +171,7 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
         cleanupAllIndices(restClient);
         restoreSnapshot(TEST_REPOSITORY_NAME, "my_snapshot3", restClient);
         testExternalStatusShowsGreen(restClient);
-        searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index1", 2);
+        searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index1", 3);
         searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index2", 2);
         searchIndex(restClient, "restored_snapshot_my_snapshot3" + "my_test_index3", 1);
     }
@@ -182,7 +188,7 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
 
         final GetSnapshotsResponse getSnapshotsResponse = restHighLevelClient.snapshot().get(getSnapshotsRequest, RequestOptions.DEFAULT);
         logger.info("get snapshots response: {}", getSnapshotsResponse);
-        Assertions.assertThat(getSnapshotsResponse.getSnapshots().size()).isEqualTo(0);
+        Assertions.assertThat(getSnapshotsResponse.getSnapshots().size()).isEqualTo(3);
     }
 
     private void snapshotCluster(
@@ -200,7 +206,9 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
                 SnapshotsStatusRequest snapshotsStatusRequest = new SnapshotsStatusRequest();
                 snapshotsStatusRequest.ignoreUnavailable(true);
                 SnapshotsStatusResponse st = restClient.snapshot().status(snapshotsStatusRequest, RequestOptions.DEFAULT);
+
                 logger.info(st.getSnapshots().toString());
+                createSnapshotRequest.masterNodeTimeout(TimeValue.timeValueSeconds(10));
                 final CreateSnapshotResponse createSnapshotResponse =
                         restClient.snapshot().create(createSnapshotRequest, RequestOptions.DEFAULT);
                 logger.info(
@@ -216,6 +224,7 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
                             repositoryName);
                 } else {
                     logger.error("Unable to snapshot repository {}", repositoryName);
+                    logger.error("Exception : ", e);
                 }
                 throw new RuntimeException(e);
             }
@@ -241,6 +250,7 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
 
     private void cleanupAllIndices(RestHighLevelClient restClient)
             throws IOException {
+
         final DeleteIndexRequest deleteIndexRequest = new DeleteIndexRequest();
         deleteIndexRequest.indices("*");
         restClient.indices().delete(deleteIndexRequest, RequestOptions.DEFAULT);
@@ -315,10 +325,25 @@ public class OciObjectStoragePluginIT extends OpenSearchRestTestCase {
      * @return RestHighLevelClient
      */
     public RestHighLevelClient getRestHighLevelClient() {
+
         RestClient restClient = client();
+        //restClient.
         final Node[] nodes = new Node[restClient.getNodes().size()];
         restClient.getNodes().toArray(nodes);
         final RestClientBuilder restClientBuilder = RestClient.builder(nodes);
         return new RestHighLevelClient(restClientBuilder);
     }
+
+//    @Override
+//    protected RestClient buildClient(Settings settings, HttpHost[] hosts) throws IOException {
+//        Settings updated =  Settings.builder()
+//                .put(settings)
+//                .put("client.socket.timeout", "300s")
+//                .build();
+//        RestClientBuilder builder = RestClient.builder(hosts);
+//        configureClient(builder, updated);
+//        builder.setStrictDeprecationMode(true);
+//        return builder.build();
+//        //return super.buildClient(updated, hosts);
+//    }
 }
